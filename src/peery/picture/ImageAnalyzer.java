@@ -105,7 +105,7 @@ public class ImageAnalyzer {
 				currBest = metric;
 			}
 		}
-		Log.log(LogLevel.Info, "Calculated all metrics for rgb:"+rgb+" !");
+		Log.log(LogLevel.Debug, "Calculated all metrics for rgb:"+rgb+" !");
 		
 		HashMap<String, Integer> matches = new HashMap<String, Integer>();
 		for(String key: metrics.keySet()){
@@ -179,7 +179,7 @@ public class ImageAnalyzer {
 		green = green/pixels;
 		blue = blue/pixels;
 		int rgb = new Color((int)red, (int)green, (int)blue).getRGB();
-		Log.log(LogLevel.Info, "Classified "+file.getPath()+" with following rgb result: value:"+rgb+
+		Log.log(LogLevel.Debug, "Classified "+file.getPath()+" with following rgb result: value:"+rgb+
 		" red:"+red+", green:"+green+", blue:"+blue);
 		return rgb;
 	}

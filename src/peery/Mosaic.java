@@ -12,7 +12,7 @@ import peery.picture.ImageAnalyzer;
 
 public class Mosaic {
 	
-	public static final String versionString = "Alpha-0.1";
+	public static final String versionString = "Alpha-0.21";
 	
 	private static final String outputName = "Output";
 	private static final int gridX = 100, gridY = 100, targetMulti = 4,
@@ -20,13 +20,13 @@ public class Mosaic {
 			adaptionCount = 300;
 	private static final double adaptionStep = 1.1, gridErrorThresh = 0.15;
 	/*
-	 * 
-	 * TODO improve performance during closest match search. -> Loads ALOT of images
+	 * FIX:
 	 * TODO investigate picture stretching -> is ImageUtils.resizeImage() even used?
-	 * TODO investigate why so few slots are actually present, I specified way more! <---
-	 * 
-	 * 
 	 * TODO alphaThreshhold is currently dead
+	 * 
+	 * Feature:
+	 * TODO explore keeping Input Image Ratio's
+	 * TODO explore guarantee of usage of at least once, each image.
 	 */
 	
 	public FileHandler fh;
@@ -51,7 +51,10 @@ public class Mosaic {
 		//
 		//Preparing Setup
 		ArrayList<String> fileList = fh.listInputFiles();
-		
+		if(fileList.size() == 0){
+			Log.log(LogLevel.Error, "No files in Input folder! There NEED to be at least some Images! Exiting...");
+			System.exit(1);
+		}
 		Log.log(LogLevel.Info, "Starting classification of Input now ...");
 		int count = 0;
 		for(String path: fileList){
@@ -66,6 +69,10 @@ public class Mosaic {
 		}
 		Log.log(LogLevel.Info, "Finished classification. Index is ready for production. Reloading index ...");
 		index = fh.loadIndex();
+		if(index == null){
+			Log.log(LogLevel.Error, "No index after Classification of Input! Can't continue! Exiting...");
+			System.exit(1);
+		}
 		
 		Log.log(LogLevel.Debug, "Canvas is "+ia.canvas.getWidth()+"x"+ia.canvas.getHeight()+" big.");
 		Log.log(LogLevel.Debug, "Grid will span "+ia.slotWidth*gridX+"x"+ia.slotHeight*gridY+" .");

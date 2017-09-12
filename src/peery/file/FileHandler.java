@@ -40,13 +40,20 @@ public class FileHandler {
 		this.TargetImageFile = new File(sourceFolder.getAbsolutePath()+fs+"Target");
 		this.OutputFolder = new File(sourceFolder.getAbsolutePath()+fs+"Output");
 		this.indexFile = new File(this.InputImagesFolder.getAbsolutePath()+"Index.txt");
-		Log.initLog(this.sourceFolder.getAbsolutePath());
+		if(!this.sourceFolder.exists()){
+			this.sourceFolder.mkdirs();
+		}
+		Log.initLog(this.sourceFolder.getAbsolutePath(), this);
 		if(fs == "\\"){
 			Log.log(LogLevel.Debug, "Assumed Windows like Folder declaration. Therefore using "+fs+" as a separator.");
 		}else{
 			Log.log(LogLevel.Debug, "Detected Linux or OSX.");
 		}
-		this.validateFolderStructure();
+		if(!this.validateFolderStructure()){
+			Log.log(LogLevel.Error, "Could not validate folder structure! Things are missing!");
+			Log.spawnReadMe(this);
+			System.exit(1);
+		}
 	}
 	
 	public boolean validateFolderStructure(){
@@ -56,24 +63,24 @@ public class FileHandler {
 				Log.log(LogLevel.Debug, "Detected Input folder at "+this.InputImagesFolder.getAbsolutePath());
 				if(this.OutputFolder.isDirectory()){
 					Log.log(LogLevel.Debug, "Detected Output folder at "+this.OutputFolder.getAbsolutePath());
-					if(this.TargetImageFile.isFile()){
-						Log.log(LogLevel.Debug, "Detected Target Image at "+this.TargetImageFile.getAbsolutePath());
-						if(!this.indexFile.isDirectory()){
-							Log.log(LogLevel.Debug, "Found no directory blocking the index file.");
-							return true;
-						}
-						else{
-							Log.log(LogLevel.Error, "Following folder collides with the index file name: "+this.indexFile.getAbsolutePath());
-							System.exit(1);
-						}
-					}else{
-						Log.log(LogLevel.Critical, "No Target Image found! Exiting...");
-						System.exit(1);
-					}
 				}else{
 					Log.log(LogLevel.Info, "No Output folder found.");
 					Log.log(LogLevel.Info, "Creating one at "+this.OutputFolder.getAbsolutePath());
 					this.OutputFolder.mkdirs();
+				}
+				if(this.TargetImageFile.isFile()){
+					Log.log(LogLevel.Debug, "Detected Target Image at "+this.TargetImageFile.getAbsolutePath());
+					if(!this.indexFile.isDirectory()){
+						Log.log(LogLevel.Debug, "Found no directory blocking the index file.");
+						return true;
+					}
+					else{
+						Log.log(LogLevel.Error, "Following folder collides with the index file name: "+this.indexFile.getAbsolutePath());
+						return false;
+					}
+				}else{
+					Log.log(LogLevel.Critical, "No Target Image found! Exiting...");
+					return false;
 				}
 			}else{
 				Log.log(LogLevel.Critical, "No Input folder found.");
@@ -81,7 +88,7 @@ public class FileHandler {
 				this.InputImagesFolder.mkdirs();
 			}
 		}else{
-			Log.log(LogLevel.Critical, "No source folder found.");
+			Log.log(LogLevel.Critical, "No source folder found (redundant check).");
 			Log.log(LogLevel.Critical, "Creating one at "+this.sourceFolder.getAbsolutePath());
 			this.sourceFolder.mkdirs();
 		}
@@ -123,6 +130,7 @@ public class FileHandler {
 	
 	public void saveImage(BufferedImage img, File file){
 		Log.log(LogLevel.Info, "Saving image as file "+file.getAbsolutePath());
+		Log.log(LogLevel.Info, "This could take a moment ...");
 		try {
 			ImageIO.write(img, "png", file);
 		} catch (IOException e) {
