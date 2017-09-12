@@ -9,7 +9,7 @@ public class Log {
 
 	public static Log log;
 	public static final boolean silenceDebug = false,
-	appendEvents = true, appendErrors = false;
+	appendEvents = false, appendErrors = false;
 	
 	public final File eventFile, errorFile;
 	private BufferedWriter eventWriter, errorWriter;
@@ -42,6 +42,19 @@ public class Log {
 		Log.log = new Log(location);
 	}
 	
+	public static void shutdownLog(){
+		if(Log.log == null){
+			return;
+		}
+		try {
+			Log.log.errorWriter.close();
+			Log.log.eventWriter.close();
+			Log.log = null;
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+	
 	public static void log(int logLvl, String message){
 		Log.log.logs(logLvl, message);
 	}
@@ -70,15 +83,17 @@ public class Log {
 		System.out.println(msg);
 		try {
 			logWriter.write(msg+"\n");
-			logWriter.flush();
+			if(LogLevel.Info.ordinal() < logLvl){ //Saves perfomance?
+				logWriter.flush();
+			}
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
 	}
-	
+	/*
 	public static void main(String[] args){
 		Log.initLog("/home/peery/Software_Projects/EclipseWorkspace/Picture Mosaic/resources/");
 		Log.log(LogLevel.Debug, "Test!");
 		Log.log(LogLevel.Error, "TEST ERROR");
-	}
+	}*/
 }

@@ -2,9 +2,16 @@ package peery.file;
 
 import java.awt.Dimension;
 import java.awt.image.BufferedImage;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Scanner;
 
 import javax.imageio.ImageIO;
 
@@ -13,33 +20,52 @@ import peery.log.LogLevel;
 
 public class FileHandler {
 	
-	public File sourceFolder, InputImagesFolder, TargetImageFile, OutputFolder;
+	public File sourceFolder, InputImagesFolder, TargetImageFile, OutputFolder, indexFile;
 	/*
 	 * sourcePath/ -> all ressources
 	 * sourcePath/Images/ -> Input pictures folder
 	 * sourcePath/Target -> Target picture file
 	 * sourcePath/Output/ -> Output picture folder
 	 */
+	public final String fs;
 	
 	public FileHandler(String sourcePath){
+		if(!System.getProperty("os.name").startsWith("Windows")){
+			fs = "/";
+		}else{
+			fs = "\\";
+		}
 		this.sourceFolder = new File(sourcePath);
-		this.InputImagesFolder = new File(sourceFolder.getAbsolutePath()+"/Images");
-		this.TargetImageFile = new File(sourceFolder.getAbsolutePath()+"/Target");
-		this.OutputFolder = new File(sourceFolder.getAbsolutePath()+"/Output");
+		this.InputImagesFolder = new File(sourceFolder.getAbsolutePath()+fs+"Images");
+		this.TargetImageFile = new File(sourceFolder.getAbsolutePath()+fs+"Target");
+		this.OutputFolder = new File(sourceFolder.getAbsolutePath()+fs+"Output");
+		this.indexFile = new File(this.InputImagesFolder.getAbsolutePath()+"Index.txt");
 		Log.initLog(this.sourceFolder.getAbsolutePath());
+		if(fs == "\\"){
+			Log.log(LogLevel.Debug, "Assumed Windows like Folder declaration. Therefore using "+fs+" as a separator.");
+		}else{
+			Log.log(LogLevel.Debug, "Detected Linux or OSX.");
+		}
 		this.validateFolderStructure();
 	}
 	
 	public boolean validateFolderStructure(){
 		if(this.sourceFolder.isDirectory()){
-			Log.log(LogLevel.Debug, "Detected sourcefolder at "+this.sourceFolder.getAbsolutePath());
+			Log.log(LogLevel.Debug, "Detected source folder at "+this.sourceFolder.getAbsolutePath());
 			if(this.InputImagesFolder.isDirectory()){
 				Log.log(LogLevel.Debug, "Detected Input folder at "+this.InputImagesFolder.getAbsolutePath());
 				if(this.OutputFolder.isDirectory()){
 					Log.log(LogLevel.Debug, "Detected Output folder at "+this.OutputFolder.getAbsolutePath());
 					if(this.TargetImageFile.isFile()){
 						Log.log(LogLevel.Debug, "Detected Target Image at "+this.TargetImageFile.getAbsolutePath());
-						return true;
+						if(!this.indexFile.isDirectory()){
+							Log.log(LogLevel.Debug, "Found no directory blocking the index file.");
+							return true;
+						}
+						else{
+							Log.log(LogLevel.Error, "Following folder collides with the index file name: "+this.indexFile.getAbsolutePath());
+							System.exit(1);
+						}
 					}else{
 						Log.log(LogLevel.Critical, "No Target Image found! Exiting...");
 						System.exit(1);
@@ -64,11 +90,24 @@ public class FileHandler {
 		return false;
 	}
 	
+	public ArrayList<String> listInputFiles(){
+		Log.log(LogLevel.Info, "Listing files inside "+this.InputImagesFolder.getName()+" ...");
+		ArrayList<String> fileList = new ArrayList<String>();
+		for(File f: this.InputImagesFolder.listFiles()){
+			if(f.isFile()){
+				fileList.add(f.getAbsolutePath());
+			}
+		}
+		return fileList;
+	}
+	
 	public BufferedImage loadImage(File file){
+		Log.log(LogLevel.Info, "Loading image "+file.getName()+" ...");
 		if(file.isFile() && file.canRead()){
 			BufferedImage img;
 			try {
 				img = ImageIO.read(file);
+				Log.log(LogLevel.Debug, "Loaded image "+file.getName()+" !");
 				return img;
 			} catch (IOException e) {
 				Log.log(LogLevel.Debug, "File "+file.getPath()+" failed to load as an Image. What did I just read?");
@@ -82,6 +121,96 @@ public class FileHandler {
 		}
 	}
 	
+	public void saveImage(BufferedImage img, File file){
+		Log.log(LogLevel.Info, "Saving image as file "+file.getAbsolutePath());
+		try {
+			ImageIO.write(img, "png", file);
+		} catch (IOException e) {
+			Log.log(LogLevel.Critical, "Couldn't write image "+file.getName()+" to file! Are write permissions missing?"
+					+ " Attempted to write at "+file.getAbsolutePath());
+			e.printStackTrace();
+		}
+	}
+	
+	public void appendToIndex(HashMap<String, Integer> index, File file, int rgb){
+		try {
+			Log.log(LogLevel.Debug, "Checking index entries for "+file.getName());
+			if(!indexFile.createNewFile() && loadIndexEntry(index, file) != null){
+				Log.log(LogLevel.Debug, "An Entry seems to already exist for "+file.getName());
+				return;
+			}
+			BufferedWriter bw = new BufferedWriter(new FileWriter(indexFile, true));
+			bw.write(rgb+";"+file.getName()+"\n");
+			bw.flush();
+			bw.close();
+			Log.log(LogLevel.Info, "Wrote index entry for "+file.getName()+" !");
+		} catch (IOException e) {
+			Log.log(LogLevel.Critical, "Couldn't create or write index file "+indexFile.getAbsolutePath()+" ."
+					+ "Are write permissions missing?");
+			e.printStackTrace();
+			return;
+		}
+	}
+	
+	/**
+	 * Loads an index entry for a single file.
+	 * 
+	 * Loads and parses the whole index in the background if not given the indexData.
+	 * @param indexData
+	 * @param file
+	 * @return
+	 */
+	public Integer loadIndexEntry(HashMap<String, Integer> indexData, File file){
+		Log.log(LogLevel.Debug, "Searching for index data of "+file.getName()+" ...");
+		if(indexData == null){
+			indexData = loadIndex();
+		}
+		return indexData.get(file.getName());
+	}
+	
+	/**
+	 * Loads the whole index file into a Hashmap.
+	 * The second value (file name) is used as a String-key, the rgb value is the int-value.
+	 * @param file
+	 * @return
+	 */
+	public HashMap<String, Integer> loadIndex(){
+		if(!this.indexFile.exists()){
+			Log.log(LogLevel.Info, "No Index file found. Nothing to load then...");
+			return null;
+		}
+		HashMap<String, Integer> indexData = new HashMap<String, Integer>();
+		try {
+			Scanner sc = new Scanner(new BufferedReader(new FileReader(this.indexFile)));
+			while(sc.hasNext()){
+				@SuppressWarnings("rawtypes")
+				ArrayList data = parseIndexData(sc.nextLine());
+				indexData.put((String)data.get(1), (int)data.get(0));
+			}
+			sc.close();
+		} catch (FileNotFoundException e) {
+			Log.log(LogLevel.Critical, "Could not open index file! Do I have read permissions?");
+			e.printStackTrace();
+		}
+		return indexData;
+	}
+	
+	/**
+	 * Parses a line of indexData into an ArrayList containing the rgb int and the name
+	 * @param indexData
+	 * @return
+	 */
+	@SuppressWarnings({ "unchecked", "rawtypes" })
+	private ArrayList parseIndexData(String indexData){
+		String[] data = indexData.split(";");
+		ArrayList result = new ArrayList();
+		result.add(Integer.parseInt(data[0]));
+		result.add(data[1]);
+		
+		return result;
+	}
+	
+	// could use a single image variant to check synchronized to the classification (saves IO)
 	public Dimension loadBiggestDimension(){
 		File[] files = this.InputImagesFolder.listFiles();
 		int width = 0, height = 0, img_count = 0;
