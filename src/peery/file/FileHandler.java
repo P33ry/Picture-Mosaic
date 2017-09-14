@@ -138,6 +138,7 @@ public class FileHandler {
 					+ " Attempted to write at "+file.getAbsolutePath());
 			e.printStackTrace();
 		}
+		Log.log(LogLevel.Info, "Saved "+file.getName()+" !");
 	}
 	
 	/**

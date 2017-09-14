@@ -29,6 +29,8 @@ public class ImageAnalyzer {
 	private HashMap<String, Integer> index;
 	
 	private int alphaThreshhold;
+	public final boolean keepRatio;
+	public int[] gridEnd;
 	
 	//Input Classification Worker
 	private int inputWorkersLimit;
@@ -57,10 +59,12 @@ public class ImageAnalyzer {
 	//
 	
 	public ImageAnalyzer(FileHandler fh, int inputWorkersLimit, int targetWorkersLimit, 
-			int matchWorkersLimit, int placeWorkersLimit, int alphaThreshhold){
+			int matchWorkersLimit, int placeWorkersLimit, int alphaThreshhold, boolean keepRatio){
 		this.fh = fh;
 		this.target = fh.loadImage(fh.TargetImageFile);
 		this.alphaThreshhold = alphaThreshhold;
+		this.keepRatio = keepRatio;
+		this.gridEnd = new int[2];
 		
 		this.inputWorkersLimit = inputWorkersLimit;
 		this.targetWorkersLimit = targetWorkersLimit;
@@ -179,8 +183,9 @@ public class ImageAnalyzer {
 	 */
 	public void classifyTarget(){
 		Log.log(LogLevel.Info, "Starting Target Classification. Calculating workload and spawning worker(s) ...");
-		this.targetWorkers = new TargetImageAnalyzerWorker[targetWorkersLimit];
-		int workload = this.slotCount / this.targetWorkersLimit;
+		this.targetWorkers = new TargetImageAnalyzerWorker[targetWorkersLimit+1];
+		Log.log(LogLevel.Debug, slotCount+" slot(s) need to be classified!");
+		int workload = this.slotCount / (this.targetWorkersLimit);
 		int initialWork = this.slotCount % workload;
 		int currWorker = 0;
 		if(initialWork != 0){
@@ -193,6 +198,8 @@ public class ImageAnalyzer {
 			targetWorkers[i] = new TargetImageAnalyzerWorker(this, this.targetWorkerName+Integer.toString(i), currWork, currWork+workload);
 			currWork += workload;
 		}
+		targetWorkers[targetWorkersLimit] = new TargetImageAnalyzerWorker(this, this.targetWorkerName+Integer.toString(targetWorkersLimit), currWork, currWork+workload); 
+		Log.log(LogLevel.Debug, "Ended on assigning "+(currWork+workload)+" slot(s)!");
 		Log.log(LogLevel.Info, "Spawned "+(currWorker+1)+" target worker(s)");
 	}
 	
@@ -202,10 +209,11 @@ public class ImageAnalyzer {
 	 * (invoked by target worker instances to deliver finished workloads)
 	 * @param clFragment HashMap with classifications and coordinates (slot) as key.
 	 */
-	public synchronized void addSlotClassifications(HashMap<int[], Integer> clFragment){
+	public synchronized void addSlotClassifications(HashMap<int[], Integer> clFragment, String workerName){
 		for(int[] key: clFragment.keySet()){
 			if(!slotClassifications.containsKey(ImageUtils.parseCoord(key))){
 				this.slotClassifications.put(ImageUtils.parseCoord(key), clFragment.get(key));
+				Log.log(LogLevel.Debug, "Got a classification added by "+workerName+" "+key[0]+" "+key[1]);
 				/*if(key[0] == 199 && key[1] == 0){
 					Log.log(LogLevel.Error, "ImageAnalyzer.addSlotClassifications() - key[0]==30 && key[1]==0");
 					Log.log(LogLevel.Error, "Brrrriiiing!");
@@ -215,6 +223,7 @@ public class ImageAnalyzer {
 					Log.log(LogLevel.Error, "");
 				}*/
 			}else{
+				Log.log(LogLevel.Error, "Caused by ["+workerName+"] with "+key[0]+" "+key[1]);
 				Log.log(LogLevel.Error, "Multiple classifcation of target slot detected! Workloads were not sliced correctly or coordinates are screwed up!");
 				continue;
 			}
@@ -347,12 +356,27 @@ public class ImageAnalyzer {
 	 * @param canvas
 	 * @return
 	 */
-	public synchronized void placeImage(int gridX, int gridY, BufferedImage input){
+	public synchronized void placeImage(int gridX, int gridY, BufferedImage input, boolean keepRatio){
 		assert(gridX < slotX && gridY < slotY);
 		assert(input.getWidth() < postSlotWidth && input.getHeight() < postSlotHeight);
 		
+		int picWidth, picHeight;
+		if(keepRatio){
+			picWidth = input.getWidth();
+			picHeight = input.getHeight();
+		}else{
+			picWidth = postSlotWidth;
+			picHeight = postSlotHeight;
+		}
+		
 		Graphics2D g2 = (Graphics2D)canvas.getGraphics();
-		g2.drawImage(input, gridX*postSlotWidth, gridY*postSlotHeight, postSlotWidth, postSlotHeight, null);
+		g2.drawImage(input, gridX*postSlotWidth, gridY*postSlotHeight, input.getWidth(), input.getHeight(), null);
+		if(gridEnd[0] < gridX*postSlotWidth+postSlotWidth){
+			gridEnd[0] = gridX*postSlotWidth+postSlotWidth;
+		}
+		if(gridEnd[1] < gridY*postSlotHeight+postSlotHeight){
+			gridEnd[1] = gridY*postSlotHeight+postSlotHeight;
+		}
 		g2.dispose();
 		//Log.log(LogLevel.Error, "Drawn picture at "+gridX*postSlotWidth+" "+gridY*postSlotHeight+" with "+input.getWidth()+"x"+input.getHeight());
 	}

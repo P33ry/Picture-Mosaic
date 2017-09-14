@@ -10,10 +10,10 @@ import peery.picture.ImageAnalyzer;
 public class Mosaic extends Thread{
 	
 	public static final String programmName = "Mosaic",
-	versionString = "Alpha-0.32";
+	versionString = "Alpha-0.33";
 	
 	private static final String outputName = "Output";
-	private static final int gridX = 200, gridY = 200, targetMulti = 2,
+	private static final int gridX = 100, gridY = 50, targetMulti = 2,
 			alphaThreshhold = 30,
 			adaptionCount = 300,
 			inputWorkerLimit = 10,
@@ -21,14 +21,14 @@ public class Mosaic extends Thread{
 			matchWorkerLimit = 10,
 			placeWorkerLimit = 2;
 	private static final double adaptionStep = 1.1, gridErrorThresh = 0.15;
+	private static boolean keepRatio = false;
 	/*
 	 * 
 	 * Performance:
 	 * 
 	 * 
 	 * FIX:
-	 *  somewhere I'm loosing pixels from the target (the output is cut off as if it was smaller)
-	 *  investigate picture stretching -> is ImageUtils.resizeImage() even used?
+	 *  rasterization doesn't cover everything!
 	 *  alphaThreshhold is currently dead
 	 * 
 	 * Feature:
@@ -42,7 +42,8 @@ public class Mosaic extends Thread{
 	public Mosaic(){
 		fh = new FileHandler("resources");
 		Log.log(LogLevel.Info, "Starting "+programmName+" "+versionString);
-		ia = new ImageAnalyzer(fh, inputWorkerLimit, targetWorkerLimit, matchWorkerLimit, placeWorkerLimit, alphaThreshhold);
+		ia = new ImageAnalyzer(fh, inputWorkerLimit, targetWorkerLimit, matchWorkerLimit, 
+				placeWorkerLimit, alphaThreshhold, keepRatio);
 		
 		this.start();
 	}
@@ -81,6 +82,7 @@ public class Mosaic extends Thread{
 				e.printStackTrace();
 			}
 		}
+		cutOutGrid();
 		Log.log.perfLog("Finished Placement!");
 		Log.log(LogLevel.Info, "Finished placement. Output is done ...");
 		Log.log.perfLog("Saving output to file ...");
@@ -95,8 +97,8 @@ public class Mosaic extends Thread{
 	 * Starts threads to index all not indexed images and rasterizes and classifies the Target.
 	 */
 	public void prepMatching(){
-		ia.updateIndex();
 		ia.rasterizeTarget(gridX, gridY, targetMulti, gridErrorThresh, adaptionCount, adaptionStep);
+		ia.updateIndex();
 		ia.classifyTarget();
 	}
 	
@@ -108,6 +110,12 @@ public class Mosaic extends Thread{
 	public void createMosaic(){
 		Log.log(LogLevel.Info, "Starting Creation of Mosaic !");
 		ia.placeFragments();
+	}
+	
+	public void cutOutGrid(){
+		Log.log(LogLevel.Info, "Cutting out what the grid covered!");
+		Log.log(LogLevel.Debug, "Cutting out 0 0 "+ia.gridEnd[0]+" "+ia.gridEnd[1]);
+		ia.canvas = ia.canvas.getSubimage(0, 0, ia.gridEnd[0], ia.gridEnd[1]);
 	}
 
 	public static void main(String[] args){

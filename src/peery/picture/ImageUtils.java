@@ -19,8 +19,8 @@ public class ImageUtils {
 			g2.dispose();
 			return img;
 		}
-		if(targetSize.getWidth() > targetSize.getHeight()){
-			tmp = input.getScaledInstance(-1, (int)targetSize.getHeight(), Image.SCALE_SMOOTH);
+		if(input.getWidth() > input.getHeight()){
+			tmp = input.getScaledInstance((int)targetSize.getWidth(), -1, Image.SCALE_SMOOTH);
 			img = new BufferedImage(tmp.getWidth(null), tmp.getHeight(null), BufferedImage.TYPE_INT_ARGB);
 			
 			Graphics2D g2 = (Graphics2D) img.getGraphics();
@@ -28,7 +28,7 @@ public class ImageUtils {
 			g2.dispose();
 			return img;
 		}else{
-			tmp = input.getScaledInstance((int)targetSize.getWidth(), -1, Image.SCALE_SMOOTH);
+			tmp = input.getScaledInstance(-1, (int)targetSize.getHeight(), Image.SCALE_SMOOTH);
 			img = new BufferedImage(tmp.getWidth(null), tmp.getHeight(null), BufferedImage.TYPE_INT_ARGB);
 			
 			Graphics2D g2 = (Graphics2D) img.getGraphics();
@@ -39,13 +39,35 @@ public class ImageUtils {
 	}
 	
 	/**
+	 * Converts the given number into the slot coordinates (not pixel coordinates).
+	 * @param ia
+	 * @param num
+	 * @return
+	 */
+	public static int[] getSlotCoord(ImageAnalyzer ia, int num){
+		int[] coords = new int[2];
+		coords[0] = num%(ia.slotX+1);
+		coords[1] = num/(ia.slotX+1);
+		return coords;
+	}
+	
+	/**
 	 * Converts from a numbered Slot to a specific slot start coordinate. 
 	 * 
 	 * @param num
 	 * @param preMagnification	true if slot sizes before the magnification are to be used.
 	 * @return
 	 */
-	public static int[] getSlotCoord(ImageAnalyzer ia, int num, boolean preMagnification){
+	public static int[] getSlotCoordPixels(ImageAnalyzer ia, int[] coords, boolean preMagnification){
+		//TODO BUGGGSSS
+		/*
+		 * Error collision values (num1 num2 preSlotDimensions -> result):
+		 * 18614 18855  7x3 -> 399x174
+		 * 18565 18806  7x3 -> 56x174
+		 * 6735 6976	7x3 -> 1596x63
+		 * 5833 6074    7x3 -> 343x54
+		 * 382 623		7x3 -> 987x3
+		 */
 		int slotWidth, slotHeight;
 		if(preMagnification){
 			slotWidth = ia.preSlotWidth;
@@ -56,10 +78,8 @@ public class ImageUtils {
 		}
 		
 		//TODO -----> FIX überschlag von Zeile 0 in 1; x zählt zu viel!
-		int ySlots = num/(ia.slotY-1);
-		int xSlots = num%(ia.slotX-1);
-		int[] coords = {xSlots*slotWidth, ySlots*slotHeight};
-		return coords;
+		int[] pixelCoords = {coords[0]*slotWidth, coords[1]*slotHeight};
+		return pixelCoords;
 	}
 	
 	public static String parseCoord(int[] coord){

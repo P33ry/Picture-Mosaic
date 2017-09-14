@@ -47,10 +47,10 @@ public class MatchWorker extends ImageAnalyzerWorker{
 				continue;
 			}
 			if(index == null || slotClassifications.get(ImageUtils.parseCoord(coord)) == null){ //TODO remove
-				Log.log(LogLevel.Error, "MatchWorker run() -> slotClass.get(ImageUtils.parse(coord)==null");
+				Log.log(LogLevel.Error, "MatchWorker run() -> slotClassifications.get(ImageUtils.parseCoord(coord)==null");
 				Log.log(LogLevel.Error, "BRrrring"+slotClassifications.get(ImageUtils.parseCoord(coord)));
 				Log.log(LogLevel.Error, "parsed: "+ImageUtils.parseCoord(coord));
-				Log.log(LogLevel.Error, ""+coord[0]+" "+coord[1]);
+				Log.log(LogLevel.Error, "Unparsed: "+coord[0]+" "+coord[1]);
 				Log.log(LogLevel.Error, "");
 				for(String key: slotClassifications.keySet()){
 					//Log.log(LogLevel.Error, key);

@@ -37,7 +37,7 @@ public class TargetImageAnalyzerWorker extends ImageAnalyzerWorker{
 	public void run(){
 		Log.log(LogLevel.Info, "Worker "+this.getName()+" up and running! Let's roll ...");
 		HashMap<int[], Integer> result = this.classifyArea(startCoord, endCoord);
-		ia.addSlotClassifications(result);
+		ia.addSlotClassifications(result, this.getName());
 		Log.log(LogLevel.Info, "Worker "+this.getName()+" finished work! Terminating ...");
 	}
 	
@@ -53,9 +53,9 @@ public class TargetImageAnalyzerWorker extends ImageAnalyzerWorker{
 	public HashMap<int[], Integer> classifyArea(int startCoord, int endCoord){
 		BufferedImage target = ia.target;
 		HashMap<int[], Integer> results = new HashMap<int[], Integer>();
-		System.out.println("Was ordered: "+startCoord+" "+endCoord);
+		Log.log(LogLevel.Debug, "["+this.getName()+"] Was ordered to classify "+startCoord+" "+endCoord);
 		for(int i = startCoord; i < endCoord; i++){
-			int[] coordPixels = ImageUtils.getSlotCoord(ia, i, true);
+			int[] coordPixels = ImageUtils.getSlotCoordPixels(ia, ImageUtils.getSlotCoord(ia, i), true);
 			if(coordPixels[0]+ia.preSlotWidth >= ia.target.getWidth() || coordPixels[1]+ia.preSlotHeight >= ia.target.getHeight()){
 				//Dirty FIX
 				//This will inevitably land outside the Raster otherwise. I should prevent these Coords from the start
@@ -64,7 +64,9 @@ public class TargetImageAnalyzerWorker extends ImageAnalyzerWorker{
 			}
 			int rgb = classifySlot(coordPixels[0], coordPixels[1], ia.preSlotWidth, ia.preSlotHeight, ia.target);
 			int[] coordSlot = {coordPixels[0]/ia.preSlotWidth, coordPixels[1]/ia.preSlotHeight};
-			
+			Log.log(LogLevel.Debug, "["+this.getName()+"] Classified on slot "+coordSlot[0]+" "+coordSlot[1]+" i:"+i
+					+" coordPixels:"+coordPixels[0]+"x"+coordPixels[1]+" preslotDimensions:"+ia.preSlotWidth+"x"+ia.preSlotHeight+
+					" slotX:"+ia.slotX+" slotY:"+ia.slotY);
 			/*if(coordPixels[0] == 210 && coordPixels[1] == 0){//TODO remove
 				System.out.println("Brrrring!");
 				Log.log(LogLevel.Error, "Brrrriiing"+rgb+" ");
@@ -87,8 +89,7 @@ public class TargetImageAnalyzerWorker extends ImageAnalyzerWorker{
 	 * @return average Color as RGB value
 	 */
 	public int classifySlot(int gridX, int gridY, int slotWidth, int slotHeight, BufferedImage target){
-		System.out.println(gridX+" "+gridY+" "+slotWidth+" "+slotHeight);
-		Log.log(LogLevel.Debug, "["+this.getName()+"] Slicing slot "+gridX+"x"+gridY+" out of the target for classification ...");
+		Log.log(LogLevel.Debug, "["+this.getName()+"] Slicing slot at pixels: "+gridX+"x"+gridY+" out of the target with "+slotWidth+"x"+slotHeight+"for classification ...");
 		BufferedImage subImage = target.getSubimage(gridX, gridY, slotWidth, slotHeight);
 		ColorModel cm = ColorModel.getRGBdefault();
 		float red = 0, green = 0, blue = 0;
@@ -106,7 +107,7 @@ public class TargetImageAnalyzerWorker extends ImageAnalyzerWorker{
 		green = green/pixels;
 		blue = blue/pixels;
 		int rgb = new Color((int)red, (int)green, (int)blue).getRGB();
-		Log.log(LogLevel.Debug, "["+this.getName()+"] Classified slot "+gridX+"x"+gridY+" with following rgb result: value:"+rgb+
+		Log.log(LogLevel.Debug, "["+this.getName()+"] Classified slot at pixels: "+gridX+"x"+gridY+" with following rgb result: value:"+rgb+
 				" red:"+red+", green:"+green+", blue:"+blue);
 		return rgb;
 	}
