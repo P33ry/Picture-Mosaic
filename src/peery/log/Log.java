@@ -4,13 +4,14 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.util.ArrayList;
 
 import peery.file.FileHandler;
 
 public class Log {
 
 	public static Log log;
-	public static final boolean silenceDebug = true,
+	public static final boolean silenceDebug = false,
 	appendEvents = false, appendErrors = false;
 	
 	private final static String readmeText = 
@@ -25,13 +26,17 @@ public class Log {
 	
 	private String location;
 	public final File eventFile, errorFile;
-	private BufferedWriter eventWriter, errorWriter;
+	private File perfFile;
+	private BufferedWriter eventWriter, errorWriter, perfWriter;
 	
+	private ArrayList<Long> nanoTimes;
 	
 	public Log(String location, FileHandler fh){
 		this.location = location;
 		this.eventFile = new File(location+fh.fs+"eventLog.log");
 		this.errorFile = new File(location+fh.fs+"ERROR.log");
+		this.perfFile = new File(location+fh.fs+"perf.log");
+		this.nanoTimes = new ArrayList<Long>();
 		
 		try {
 			if(!this.eventFile.exists()){
@@ -40,15 +45,20 @@ public class Log {
 			if(!this.errorFile.exists()){
 				this.errorFile.createNewFile();
 			}
+			if(!this.perfFile.exists()){
+				this.perfFile.createNewFile();
+			}
 			this.eventWriter = new BufferedWriter(new FileWriter(eventFile, appendEvents));
 			this.errorWriter = new BufferedWriter(new FileWriter(errorFile, appendErrors));
+			this.perfWriter = new BufferedWriter(new FileWriter(perfFile, true));
+			perfWriter.write("\n\n");
 		} catch (IOException e) {
 			e.printStackTrace();
 			System.exit(1);
 		}
 	}
 	
-	public static void initLog(String location, FileHandler fh){
+	public static synchronized void initLog(String location, FileHandler fh){
 		if(Log.log != null){
 			return;
 		}
@@ -70,15 +80,18 @@ public class Log {
 	}
 	
 	public static void log(int logLvl, String message){
-		Log.log.logs(logLvl, message);
+		Log.log(LogLevel.values()[logLvl], message);
 	}
 	
 	public static void log(LogLevel lv, String message){
+		if(silenceDebug && LogLevel.Debug == lv){
+			return;
+		}
 		Log.log.logs(lv.ordinal(), message);
 	}
 	
 	@SuppressWarnings("unused")
-	public void logs(int logLvl, String message){
+	public synchronized void logs(int logLvl, String message){
 		String prefix = LogLevel.values()[logLvl].toString();
 		prefix = "["+prefix+"]";
 		BufferedWriter logWriter;
@@ -100,6 +113,41 @@ public class Log {
 			if(LogLevel.Info.ordinal() < logLvl){ //Saves perfomance?
 				logWriter.flush();
 			}
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+	
+	public synchronized void perfLog(String message){
+		long currentTime = System.nanoTime();
+		String timeStamp = new java.util.Date().toString()+"|"+currentTime;
+		this.nanoTimes.add(currentTime);
+		try {
+			perfWriter.write(message+"\n");
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+	
+	public void finishPerfLog(){
+		String[] stages = {
+				"Indexing & Rasterization", // 2 - 1  1
+				"Matching",					// 4 - 3  2
+				"Placement",				// 6 - 5  3
+				"Saving"					// 8 - 7  4
+		};
+		for(int i = 1; i <= stages.length; i++){
+			long duration = nanoTimes.get(i*2) - nanoTimes.get(i*2-1);
+			try {
+				perfWriter.write(stages[i-1]+": "+duration+"\n");
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+		try {
+			perfWriter.flush();
+			perfWriter.close();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}

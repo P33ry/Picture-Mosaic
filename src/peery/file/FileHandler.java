@@ -140,13 +140,15 @@ public class FileHandler {
 		}
 	}
 	
-	public void appendToIndex(HashMap<String, Integer> index, File file, int rgb){
-		try {
-			Log.log(LogLevel.Debug, "Checking index entries for "+file.getName());
-			if(!indexFile.createNewFile() && loadIndexEntry(index, file) != null){
-				Log.log(LogLevel.Debug, "An Entry seems to already exist for "+file.getName());
-				return;
-			}
+	/**
+	 * Plainly appends the given file and rgb value to the end of the index.
+	 * 
+	 * CHECK FOR DUPLICATES BEFOREHAND.
+	 * @param file
+	 * @param rgb
+	 */
+	public synchronized void appendToIndex(File file, int rgb){
+		try{
 			BufferedWriter bw = new BufferedWriter(new FileWriter(indexFile, true));
 			bw.write(rgb+";"+file.getName()+"\n");
 			bw.flush();
@@ -184,7 +186,13 @@ public class FileHandler {
 	 */
 	public HashMap<String, Integer> loadIndex(){
 		if(!this.indexFile.exists()){
-			Log.log(LogLevel.Info, "No Index file found. Nothing to load then...");
+			Log.log(LogLevel.Info, "No Index file found. Nothing to load then. Creating empty one ...");
+			try {
+				indexFile.createNewFile();
+			} catch (IOException e) {
+				Log.log(LogLevel.Error, "Couldn't create Index file! Are write permissions missing?");
+				e.printStackTrace();
+			}
 			return null;
 		}
 		HashMap<String, Integer> indexData = new HashMap<String, Integer>();
@@ -200,6 +208,7 @@ public class FileHandler {
 			Log.log(LogLevel.Critical, "Could not open index file! Do I have read permissions?");
 			e.printStackTrace();
 		}
+		Log.log(LogLevel.Debug, "Sucessfully loaded index!");
 		return indexData;
 	}
 	

@@ -7,41 +7,297 @@ import java.awt.image.BufferedImage;
 import java.awt.image.ColorModel;
 import java.io.File;
 import java.text.DecimalFormat;
+import java.util.ArrayList;
 import java.util.HashMap;
 
 import peery.file.FileHandler;
 import peery.log.Log;
 import peery.log.LogLevel;
+import peery.picture.worker.PlacementWorker;
+import peery.picture.worker.PlainImageAnalyzerWorker;
+import peery.picture.worker.MatchWorker;
+import peery.picture.worker.TargetImageAnalyzerWorker;
 
 public class ImageAnalyzer {
 	
 	public BufferedImage target;
-	private FileHandler fh;
+	public FileHandler fh;
 	
 	private Dimension /*biggestInputSize,*/ targetSize;
-	public int slotWidth, slotHeight, slotX, slotY;
+	public int preSlotWidth, preSlotHeight, postSlotWidth, postSlotHeight, slotX, slotY, slotCount;
 	public BufferedImage canvas;
+	private HashMap<String, Integer> index;
 	
-	public ImageAnalyzer(FileHandler fh){
+	private int alphaThreshhold;
+	
+	//Input Classification Worker
+	private int inputWorkersLimit;
+	private static final String inputWorkerName = "inputWorker";
+	private PlainImageAnalyzerWorker[] inputWorkers;
+	private ArrayList<File> inputFiles;
+	//
+	
+	//Target Classification Worker
+	private int targetWorkersLimit;
+	private static final String targetWorkerName = "targetWorker";
+	private TargetImageAnalyzerWorker[] targetWorkers;
+	public HashMap<String, Integer> slotClassifications; //TODO change back private
+	//
+	
+	//Matching Worker
+	private int matchWorkersLimit;
+	private static final String matchWorkerName = "matchWorker";
+	private MatchWorker[] matchWorkers;
+	private HashMap<int[], File[]> fileMap;
+	//
+	
+	//Placement Worker
+	private static final String placeWorkerName = "placeWorker";
+	private PlacementWorker placeWorker;
+	//
+	
+	public ImageAnalyzer(FileHandler fh, int inputWorkersLimit, int targetWorkersLimit, 
+			int matchWorkersLimit, int placeWorkersLimit, int alphaThreshhold){
 		this.fh = fh;
 		this.target = fh.loadImage(fh.TargetImageFile);
+		this.alphaThreshhold = alphaThreshhold;
+		
+		this.inputWorkersLimit = inputWorkersLimit;
+		this.targetWorkersLimit = targetWorkersLimit;
+		this.matchWorkersLimit = matchWorkersLimit;
+		
+		this.slotClassifications = new HashMap<String, Integer>();
+		this.fileMap = new HashMap<int[], File[]>();
+		this.inputFiles = new ArrayList<File>();
+		
+		this.inputWorkers = new PlainImageAnalyzerWorker[inputWorkersLimit];
+		this.targetWorkers = new TargetImageAnalyzerWorker[targetWorkersLimit];
+		this.matchWorkers = new MatchWorker[matchWorkersLimit];
+		this.index = fh.loadIndex();
 	}
 	
-	public void rasterizeTarget(int gridX, int gridY, float targetSizeMultiplier, double gridErrorThresh, int adaptionThreshhold, double adaptionStep){
+	/**
+	 * Checks if any of the Worker's are still out there doing stuff.
+	 * 
+	 * @return true if at least one worker of any kind is still alive!
+	 */
+	public boolean isPrepInProgress(){
+		for(PlainImageAnalyzerWorker pWorker: inputWorkers){
+			if(pWorker != null && pWorker.isAlive()){
+				return true;
+			}
+		}
+		for(TargetImageAnalyzerWorker tWorker: targetWorkers){
+			if(tWorker != null && tWorker.isAlive()){
+				return true;
+			}
+		}
+		return false;
+	}
+	
+	public boolean isMatchInProgress(){
+		for(MatchWorker mWorker: matchWorkers){
+			if(mWorker != null && mWorker.isAlive()){
+				return true;
+			}
+		}
+		return false;
+	}
+	
+	public boolean isPlaceInProgress(){
+		if(this.placeWorker != null && this.placeWorker.isAlive()){
+			return true;
+		}
+		return false;
+	}
+	
+	public synchronized void reloadIndex(){
+		Log.log(LogLevel.Debug, "Reloading index!");
+		this.index = fh.loadIndex();
+	}
+	
+	/**
+	 * Updates the index by spawning worker threads to classify new input Images.
+	 * 
+	 * Checks for already indexed images before adding them to the workload.
+	 * To check if workers are still running check worker.getRunning() or worker.isAlive() (latter preferred)
+	 * Worker instances are found in this.inputWorkers
+	 */
+	public void updateIndex(){
+		Log.log(LogLevel.Info, "Starting to update Index.");
+		
+		Log.log(LogLevel.Debug, "Filling work list with (unread) input files ...");
+		for(File f: fh.InputImagesFolder.listFiles()){
+			if(this.fh.loadIndexEntry(index, f) == null){
+				Log.log(LogLevel.Debug, "Unindexed input file "+f.getName()+" found! Adding to worklist ...");
+				inputFiles.add(f);
+			}else{
+				Log.log(LogLevel.Debug, "Already indexed input file "+f.getName()+" found!");
+			}
+		}
+		Log.log(LogLevel.Info, "Work list filled with "+inputFiles.size()+" file(s)!");
+
+		if(inputFiles.size() <= 0){
+			Log.log(LogLevel.Info, "No work then! Ending Index Update ...");
+			return;
+		}
+		Log.log(LogLevel.Info, "Spawning input workers ...");
+		inputWorkers = new PlainImageAnalyzerWorker[inputWorkersLimit];
+		int count = 0;
+		for(int i = 0; i < inputWorkersLimit; i++){
+			if(inputFiles.size() <= i){
+				Log.log(LogLevel.Debug, "Allowed more workers than ther was work. Stopped spawning on "+i+" worker(s)!");
+				break;
+			}
+			inputWorkers[i] = new PlainImageAnalyzerWorker(this, inputWorkerName+Integer.toString(i),
+					inputFiles.get(i), this.alphaThreshhold);
+			count++;
+		}
+		Log.log(LogLevel.Info, count+"  worker(s) spawned!");
+	}
+	
+	/**
+	 * Securely retrieves new workload for PlainImageAnalyzerWorker instances.
+	 * 
+	 * Returns null when the list is empty.
+	 * @return File for PlainImageAnalyzerWorker to work with.
+	 */
+	public synchronized File getNewInputFile(){
+		if(inputFiles.size() == 0){
+			return null;
+		}
+		File file = inputFiles.get(0);
+		inputFiles.remove(0);
+		return file;
+	}
+	
+	/**
+	 * Starts classification of the target image's slots via spawning threaded workers.
+	 * 
+	 * To check if workers are still running check worker.getRunning() or worker.isAlive() (latter preferred)
+	 * Worker instances are found in this.targetWorkers
+	 */
+	public void classifyTarget(){
+		Log.log(LogLevel.Info, "Starting Target Classification. Calculating workload and spawning worker(s) ...");
+		this.targetWorkers = new TargetImageAnalyzerWorker[targetWorkersLimit];
+		int workload = this.slotCount / this.targetWorkersLimit;
+		int initialWork = this.slotCount % workload;
+		int currWorker = 0;
+		if(initialWork != 0){
+			this.targetWorkers[0] = new TargetImageAnalyzerWorker(this, this.targetWorkerName+"0", 0, initialWork);
+			currWorker++;
+		}
+		
+		int currWork = initialWork;
+		for(int i = currWorker; i < targetWorkersLimit; i++){
+			targetWorkers[i] = new TargetImageAnalyzerWorker(this, this.targetWorkerName+Integer.toString(i), currWork, currWork+workload);
+			currWork += workload;
+		}
+		Log.log(LogLevel.Info, "Spawned "+(currWorker+1)+" target worker(s)");
+	}
+	
+	/**
+	 * Adds the given classification map to the classification map of the TargetImage.
+	 * 
+	 * (invoked by target worker instances to deliver finished workloads)
+	 * @param clFragment HashMap with classifications and coordinates (slot) as key.
+	 */
+	public synchronized void addSlotClassifications(HashMap<int[], Integer> clFragment){
+		for(int[] key: clFragment.keySet()){
+			if(!slotClassifications.containsKey(ImageUtils.parseCoord(key))){
+				this.slotClassifications.put(ImageUtils.parseCoord(key), clFragment.get(key));
+				/*if(key[0] == 199 && key[1] == 0){
+					Log.log(LogLevel.Error, "ImageAnalyzer.addSlotClassifications() - key[0]==30 && key[1]==0");
+					Log.log(LogLevel.Error, "Brrrriiiing!");
+					Log.log(LogLevel.Error, "parseCoord: "+ImageUtils.parseCoord(key));
+					Log.log(LogLevel.Error, "deliveredFrag: "+clFragment.get(key));
+					Log.log(LogLevel.Error, "result: "+this.slotClassifications.get(ImageUtils.parseCoord(key)));
+					Log.log(LogLevel.Error, "");
+				}*/
+			}else{
+				Log.log(LogLevel.Error, "Multiple classifcation of target slot detected! Workloads were not sliced correctly or coordinates are screwed up!");
+				continue;
+			}
+		}
+		
+	}
+	
+	public void calculateMatches(){
+		Log.log(LogLevel.Info, "Starting to match slots to indexed Images. Spawning workers ...");
+		this.matchWorkers = new MatchWorker[matchWorkersLimit];
+		int workload = this.slotCount / this.matchWorkersLimit;
+		int initialWork = this.slotCount % workload;
+		int currWorker = 0;
+		int[] lel = {62, 68};
+		if(initialWork != 0){
+			this.matchWorkers[0] = new MatchWorker(this, matchWorkerName+"0", 0, initialWork, 0,
+					slotClassifications, index);
+			currWorker++;
+		}
+		
+		int currWork = initialWork;
+		for(int i = currWorker; i < matchWorkersLimit; i++){
+			matchWorkers[i] = new MatchWorker(this, matchWorkerName+"0", currWork, currWork+workload, 0,
+					slotClassifications, index);;
+			currWork += workload;
+		}
+		Log.log(LogLevel.Info, "Spawned "+(currWorker+1)+" match worker(s)");
+	}
+	
+	/**
+	 * Merges the given fileMapFragment with this instance's one.
+	 * 
+	 * (invoked by MatchWorker instances)
+	 * @param fileMapFragment
+	 */
+	public synchronized void addFileMaps(HashMap<int[], File[]> fileMapFragment){
+		for(int[] key: fileMapFragment.keySet()){
+			if(!fileMap.containsKey(key)){
+				this.fileMap.put(key, fileMapFragment.get(key));
+			}else{
+				Log.log(LogLevel.Error, "Multiple fileMap fragments for "+key.toString()+" available! Something went wrong ...");
+				continue;
+			}
+		}
+	}
+	
+	/**
+	 * Starts processing the fileMap and queues workloads for PlacementWorker instances and spawns them.
+	 */
+	public void placeFragments(){
+		Log.log(LogLevel.Info, "Starting to gather Coordinates for each Image.");
+		HashMap<File, ArrayList<int[]>> coordMap = new HashMap<File, ArrayList<int[]>>();
+		for(int[] coord: fileMap.keySet()){
+			File file = fileMap.get(coord)[0];
+			
+			if(!coordMap.containsKey(file)){
+				coordMap.put(file, new ArrayList<int[]>());
+			}
+			coordMap.get(file).add(coord);
+		}
+		Log.log(LogLevel.Info, "Start placing fragments on the target.");
+		this.placeWorker = new PlacementWorker(this, this.placeWorkerName, coordMap);
+	}
+	
+	public void rasterizeTarget(int gridX, int gridY, float targetSizeMultiplier, 
+			double gridErrorThresh, int adaptionCount, double adaptionStep){
 		Log.log(LogLevel.Info, "Rasterizing target image ...");
 		Log.log(LogLevel.Info, "Aiming for "+gridX+"*"+gridY+"="+(gridX*gridY)+" tiles ...");
+		Log.log(LogLevel.Debug, "Target is "+target.getWidth()+"x"+target.getHeight()+" big!");
 		//this.biggestInputSize = this.fh.loadBiggestDimension();
 		this.targetSize = new Dimension(this.target.getWidth(), this.target.getHeight());
 		
-		//TMP
 		int count = 0;
 		DecimalFormat df = new DecimalFormat("#");
 		while(true){
-			double realSlotWidth = ((targetSize.width*targetSizeMultiplier)/gridX);
-			double realSlotHeight = ((targetSize.height*targetSizeMultiplier)/gridY);
-			Log.log(LogLevel.Debug, "Perfect slot Size would be "+realSlotWidth+"x"+realSlotHeight);
-			double widthLoss = Math.abs(realSlotWidth - Double.parseDouble(df.format(realSlotWidth)));
-			double heightLoss = Math.abs(realSlotHeight - Double.parseDouble(df.format(realSlotHeight)));
+			double resultSlotWidth = ((targetSize.width*targetSizeMultiplier)/gridX);
+			double resultSlotHeight = ((targetSize.height*targetSizeMultiplier)/gridY);
+			postSlotWidth = (int)resultSlotWidth;
+			postSlotHeight = (int)resultSlotHeight;
+			
+			Log.log(LogLevel.Debug, "Perfect slot Size would be "+resultSlotWidth+"x"+resultSlotHeight);
+			double widthLoss = Math.abs(resultSlotWidth - Double.parseDouble(df.format(resultSlotWidth)));
+			double heightLoss = Math.abs(resultSlotHeight - Double.parseDouble(df.format(resultSlotHeight)));
 			if(widthLoss > gridErrorThresh || heightLoss > gridErrorThresh){
 				Log.log(LogLevel.Critical, "Grid misplacement error exceeded threshhold! Error is width:"+widthLoss+" height:"+heightLoss);
 				if(widthLoss > gridErrorThresh){
@@ -52,7 +308,7 @@ public class ImageAnalyzer {
 				}
 				Log.log(LogLevel.Info, "This is the "+(++count)+". adaption to ease the error.");
 				Log.log(LogLevel.Info, "Aiming for "+gridX+"*"+gridY+"="+(gridX*gridY)+" tiles ...");
-				if(count > adaptionThreshhold){
+				if(count > adaptionCount){
 					Log.log(LogLevel.Critical, "Could not adapt to grid misplacement error! The result might be cut off or missing parts!");
 					break;
 				}
@@ -63,72 +319,23 @@ public class ImageAnalyzer {
 		}
 		
 		
-		slotWidth = (int) ((targetSize.width*targetSizeMultiplier)/gridX);
-		slotHeight = (int) ((targetSize.height*targetSizeMultiplier)/gridY);
+		preSlotWidth = (int) ((targetSize.width)/gridX);
+		preSlotHeight = (int) ((targetSize.height)/gridY);
 		//
 		
 		
 		Log.log(LogLevel.Debug, "Target will be "+(int)(targetSize.width*targetSizeMultiplier)
 				+"x"+(int)(targetSize.height*targetSizeMultiplier)+" big.");
-		Log.log(LogLevel.Debug, "Slots are "+slotWidth+"x"+slotHeight+" big.");
+		Log.log(LogLevel.Debug, "Slots are "+preSlotWidth+"x"+preSlotHeight+" big.");
 		slotX = gridX;
 		slotY = gridY;
+		slotCount = gridX*gridY;
 		//ia.slotWidth*gridX+"x"+ia.slotHeight*gridY
 		//canvas = new BufferedImage((int)(targetSize.getWidth()*targetSizeMultiplier), (int)(targetSize.getHeight()*targetSizeMultiplier), BufferedImage.TYPE_INT_ARGB);
-		canvas = new BufferedImage(slotWidth*gridX, slotHeight*gridY, BufferedImage.TYPE_INT_ARGB);
+		canvas = new BufferedImage(postSlotWidth*gridX, postSlotHeight*gridY, BufferedImage.TYPE_INT_ARGB);
 		Graphics2D g2 = (Graphics2D) canvas.getGraphics();
 		g2.setColor(Color.BLACK);
 		g2.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
-	}
-	
-	/**
-	 * Compares the given rgb value with the index and returns a HashMap of the closest hits.
-	 * Unlikely to yield more than 1 result without deviationPercentage
-	 * @param index
-	 * @param rgb
-	 * @param deviation How much the matches can be different from the perfect match, and still be taken.
-	 * @return
-	 */
-	public HashMap<String, Integer> matchClosestIndex(HashMap<String, Integer> index, int rgb, int deviation){
-		Log.log(LogLevel.Debug, "Searching for closest match for rgb:"+rgb+" in the index with deviation of "+deviation+".");
-		assert(deviation < 100 && 0 <= deviation);
-		if(index == null){
-			Log.log(LogLevel.Critical, "No Index was given for rgb matching. Loading it from file ...");
-			index = this.fh.loadIndex();
-		}
-		HashMap<String, Double> metrics = new HashMap<String, Double>();
-		double currBest = -1;
-		for(String key: index.keySet()){
-			double metric = getMetric(index.get(key), rgb);
-			metrics.put(key, metric);
-			if(currBest > metric || currBest == -1){
-				currBest = metric;
-			}
-		}
-		Log.log(LogLevel.Debug, "Calculated all metrics for rgb:"+rgb+" !");
-		
-		HashMap<String, Integer> matches = new HashMap<String, Integer>();
-		for(String key: metrics.keySet()){
-			if(metrics.get(key) == currBest || metrics.get(key) < currBest+(currBest*(deviation/(double)100))){
-				matches.put(key, index.get(key));
-			}
-		}
-		Log.log(LogLevel.Debug, "Grabbed all good matches for rgb:"+rgb+" ! Got "+matches.size()+" ...");
-		return matches;
-	}
-	
-	/**
-	 * Calculates the euclidian metric of two given rgb values.
-	 * @param rgb1
-	 * @param rgb2
-	 * @return
-	 */
-	private double getMetric(int rgb1, int rgb2){
-		ColorModel cm = ColorModel.getRGBdefault();
-		double result = Math.sqrt(Math.pow((cm.getRed(rgb1)-cm.getRed(rgb2)), 2)+
-				Math.pow(cm.getGreen(rgb1)-cm.getGreen(rgb2), 2)+
-				Math.pow(cm.getBlue(rgb1)-cm.getBlue(rgb2), 2));
-		return result;
 	}
 	
 	/**
@@ -140,75 +347,19 @@ public class ImageAnalyzer {
 	 * @param canvas
 	 * @return
 	 */
-	public void placeImage(int gridX, int gridY, BufferedImage input){
+	public synchronized void placeImage(int gridX, int gridY, BufferedImage input){
 		assert(gridX < slotX && gridY < slotY);
-		assert(input.getWidth() < slotWidth && input.getHeight() < slotHeight);
+		assert(input.getWidth() < postSlotWidth && input.getHeight() < postSlotHeight);
 		
 		Graphics2D g2 = (Graphics2D)canvas.getGraphics();
-		g2.drawImage(input, gridX*slotWidth, gridY*slotHeight, slotWidth, slotHeight, null);
+		g2.drawImage(input, gridX*postSlotWidth, gridY*postSlotHeight, postSlotWidth, postSlotHeight, null);
 		g2.dispose();
+		//Log.log(LogLevel.Error, "Drawn picture at "+gridX*postSlotWidth+" "+gridY*postSlotHeight+" with "+input.getWidth()+"x"+input.getHeight());
 	}
 	
-	/**
-	 * Plain calculation of average Color of an Image via RGB. 
-	 * Takes average of RGB values of each pixel.
-	 * Does not account for alpha.
-	 * @param img Image to process
-	 * @param alphaThreshhold value under which pixels are discarded
-	 * @return RGB value of the average color
-	 */
-	public int classifyImage(BufferedImage img, File file, int alphaTreshhold){
-		int width = img.getWidth();
-		int height = img.getHeight();
-		Log.log(LogLevel.Debug, "Starting classification of "+file.getName()+" with width:"+
-		width+" and height:"+height+" ...");
-		
-		ColorModel cm = ColorModel.getRGBdefault();
-		float red = 0, green = 0, blue = 0;
-		int pixels = 0;
-		for(int x = 0; x < img.getWidth(); x++){
-			for(int y = 0; y < img.getHeight(); y++){
-				int rgb = img.getRGB(x, y);
-				red += cm.getRed(rgb);
-				blue += cm.getBlue(rgb);
-				green += cm.getGreen(rgb);
-				pixels++;
-			}
-		}
-		red = red/pixels;
-		green = green/pixels;
-		blue = blue/pixels;
-		int rgb = new Color((int)red, (int)green, (int)blue).getRGB();
-		Log.log(LogLevel.Debug, "Classified "+file.getPath()+" with following rgb result: value:"+rgb+
-		" red:"+red+", green:"+green+", blue:"+blue);
-		return rgb;
-	}
 	
-	public int classifySlot(int gridX, int gridY, BufferedImage target){
-		int slotWidth = target.getWidth()/slotX, 
-			slotHeight = target.getHeight()/slotY;
-		BufferedImage subImage = target.getSubimage(gridX*slotWidth, gridY*slotHeight, slotWidth, slotHeight);
-		Log.log(LogLevel.Debug, "Slicing slot "+gridX+"x"+gridY+" out of the target for classification ...");
-		ColorModel cm = ColorModel.getRGBdefault();
-		float red = 0, green = 0, blue = 0;
-		int pixels = 0;
-		for(int x = 0; x < subImage.getWidth(); x++){
-			for(int y = 0; y < subImage.getHeight(); y++){
-				int rgb = subImage.getRGB(x, y);
-				red += cm.getRed(rgb);
-				green += cm.getGreen(rgb);
-				blue += cm.getBlue(rgb);
-				pixels++;
-			}
-		}
-		red = red/pixels;
-		green = green/pixels;
-		blue = blue/pixels;
-		int rgb = new Color((int)red, (int)green, (int)blue).getRGB();
-		Log.log(LogLevel.Debug, "Classified slot "+gridX+"x"+gridY+" with following rgb result: value:"+rgb+
-				" red:"+red+", green:"+green+", blue:"+blue);
-		return rgb;
-	}
+	
+	
 /*
 	public static void main(String[] args){
 		System.out.println("ZHE DEBUG");
