@@ -26,12 +26,12 @@ public class PlacementWorker extends ImageAnalyzerWorker{
 	public void run() {
 		Log.log(LogLevel.Info, "Worker "+this.getName()+" commencing work!");
 		for(File file: coordMap.keySet()){
-			if(coordMap.get(file) == null){
+			if(coordMap.get(file) == null){ //Check to avoid NullPointerException
 				continue;
 			}
 			BufferedImage img = ia.fh.loadImage(file);
 			ArrayList<int[]> coords = coordMap.get(file);
-			img = ImageUtils.resizeImage(img, new Dimension(ia.postSlotWidth,  ia.postSlotHeight), ia.keepRatio);
+			img = ImageUtils.resizeImage(img, new Dimension(ia.postSlotWidth,  ia.postSlotHeight), ia.keepRatio, ia.overlapImages);
 			Log.log(LogLevel.Debug, "["+this.getName()+"] Resized image "+file.getName()+" to "+img.getWidth()+"x"+img.getHeight()+" !");
 			
 			Log.log(LogLevel.Info, "["+this.getName()+"] Going to place \""+file.getName()+"\" "+coords.size()+" time(s)!");

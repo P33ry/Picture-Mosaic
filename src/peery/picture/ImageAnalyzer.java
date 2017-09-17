@@ -29,7 +29,7 @@ public class ImageAnalyzer {
 	private HashMap<String, Integer> index;
 	
 	private int alphaThreshhold;
-	public final boolean keepRatio;
+	public final boolean keepRatio, overlapImages;
 	public int[] gridEnd;
 	
 	//Input Classification Worker
@@ -59,11 +59,13 @@ public class ImageAnalyzer {
 	//
 	
 	public ImageAnalyzer(FileHandler fh, int inputWorkersLimit, int targetWorkersLimit, 
-			int matchWorkersLimit, int placeWorkersLimit, int alphaThreshhold, boolean keepRatio){
+			int matchWorkersLimit, int placeWorkersLimit, int alphaThreshhold, boolean keepRatio,
+			boolean overlapImages){
 		this.fh = fh;
 		this.target = fh.loadImage(fh.TargetImageFile);
 		this.alphaThreshhold = alphaThreshhold;
 		this.keepRatio = keepRatio;
+		this.overlapImages = overlapImages;
 		this.gridEnd = new int[2];
 		
 		this.inputWorkersLimit = inputWorkersLimit;
@@ -140,7 +142,7 @@ public class ImageAnalyzer {
 			}
 		}
 		Log.log(LogLevel.Info, "Work list filled with "+inputFiles.size()+" file(s)!");
-
+		
 		if(inputFiles.size() <= 0){
 			Log.log(LogLevel.Info, "No work then! Ending Index Update ...");
 			return;
@@ -335,7 +337,8 @@ public class ImageAnalyzer {
 		
 		Log.log(LogLevel.Debug, "Target will be "+(int)(targetSize.width*targetSizeMultiplier)
 				+"x"+(int)(targetSize.height*targetSizeMultiplier)+" big.");
-		Log.log(LogLevel.Debug, "Slots are "+preSlotWidth+"x"+preSlotHeight+" big.");
+		Log.log(LogLevel.Debug, "Slots on the Target are "+preSlotWidth+"x"+preSlotHeight+" big.");
+		Log.log(LogLevel.Debug, "Slots on the Output are "+postSlotWidth+"x"+postSlotHeight+" big.");
 		slotX = gridX;
 		slotY = gridY;
 		slotCount = gridX*gridY;

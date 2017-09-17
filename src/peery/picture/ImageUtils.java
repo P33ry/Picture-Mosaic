@@ -5,37 +5,63 @@ import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.image.BufferedImage;
 
+import peery.log.Log;
+import peery.log.LogLevel;
+
 public class ImageUtils {
 	
-	public static BufferedImage resizeImage(BufferedImage input, Dimension targetSize, boolean keepRatio){
+	private static final int scalingMethod = Image.SCALE_SMOOTH;
+	
+	/**
+	 * TODO Needs cleanup
+	 * @param input
+	 * @param targetSize
+	 * @param keepRatio
+	 * @param overlapImages
+	 * @return
+	 */
+	public static BufferedImage resizeImage(BufferedImage input, Dimension targetSize, boolean keepRatio,
+			boolean overlapImages){
 		Image tmp;
 		BufferedImage img;
+		int imageWidth, imageHeight;
 		if(!keepRatio){
-			tmp = input.getScaledInstance((int)targetSize.getWidth(), (int)targetSize.getHeight(), Image.SCALE_SMOOTH);
-			img = new BufferedImage(tmp.getWidth(null), tmp.getHeight(null), BufferedImage.TYPE_INT_ARGB);
-			
-			Graphics2D g2 = (Graphics2D) img.getGraphics();
-			g2.drawImage(tmp, 0, 0, null);
-			g2.dispose();
-			return img;
+			imageWidth = (int)targetSize.getWidth();
+			imageHeight = (int)targetSize.getHeight();
 		}
-		if(input.getWidth() > input.getHeight()){
-			tmp = input.getScaledInstance((int)targetSize.getWidth(), -1, Image.SCALE_SMOOTH);
-			img = new BufferedImage(tmp.getWidth(null), tmp.getHeight(null), BufferedImage.TYPE_INT_ARGB);
-			
-			Graphics2D g2 = (Graphics2D) img.getGraphics();
-			g2.drawImage(tmp, 0, 0, null);
-			g2.dispose();
-			return img;
-		}else{
-			tmp = input.getScaledInstance(-1, (int)targetSize.getHeight(), Image.SCALE_SMOOTH);
-			img = new BufferedImage(tmp.getWidth(null), tmp.getHeight(null), BufferedImage.TYPE_INT_ARGB);
-			
-			Graphics2D g2 = (Graphics2D) img.getGraphics();
-			g2.drawImage(tmp, 0, 0, null);
-			g2.dispose();
-			return img;
+		else{
+			if(!overlapImages){
+				if(input.getWidth() > input.getHeight()){
+					imageWidth = (int)targetSize.getWidth();
+					imageHeight = -1;
+				}else{
+					imageWidth = -1;
+					imageHeight = (int)targetSize.getHeight();
+				}
+			}else{
+				if(input.getWidth() < input.getHeight()){
+					imageWidth = (int)targetSize.getWidth();
+					imageHeight = -1;
+				}else{
+					imageWidth = -1;
+					imageHeight = (int)targetSize.getHeight();
+				}
+			}
 		}
+		
+		tmp = input.getScaledInstance(imageWidth, imageHeight, scalingMethod);
+		img = new BufferedImage(tmp.getWidth(null), tmp.getHeight(null), BufferedImage.TYPE_INT_ARGB);
+		
+		Graphics2D g2 = (Graphics2D) img.getGraphics();
+		g2.drawImage(tmp, 0, 0, null);
+		g2.dispose();
+		return img;
+	}
+	
+	public static void cutOutGrid(ImageAnalyzer ia){
+		Log.log(LogLevel.Info, "Cutting out what the grid covered!");
+		Log.log(LogLevel.Debug, "Cutting out 0 0 "+ia.gridEnd[0]+" "+ia.gridEnd[1]);
+		ia.canvas = ia.canvas.getSubimage(0, 0, ia.gridEnd[0], ia.gridEnd[1]);
 	}
 	
 	/**

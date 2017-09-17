@@ -11,7 +11,7 @@ import peery.file.FileHandler;
 public class Log {
 
 	public static Log log;
-	public static final boolean silenceDebug = false,
+	public static final boolean silenceDebug = true,
 	appendEvents = false, appendErrors = false;
 	
 	private final static String readmeText = 
@@ -73,6 +73,7 @@ public class Log {
 		try {
 			Log.log.errorWriter.close();
 			Log.log.eventWriter.close();
+			Log.log.perfWriter.close();
 			Log.log = null;
 		} catch (IOException e) {
 			e.printStackTrace();

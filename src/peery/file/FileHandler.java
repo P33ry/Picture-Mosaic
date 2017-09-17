@@ -213,6 +213,23 @@ public class FileHandler {
 		return indexData;
 	}
 	
+	public void overwriteIndex(HashMap<String, Integer> index){
+		try{
+			BufferedWriter bw = new BufferedWriter(new FileWriter(indexFile, false));
+			for(String key: index.keySet()){
+				bw.write(index.get(key)+";"+key+"\n");
+			}
+			bw.flush();
+			bw.close();
+			Log.log(LogLevel.Info, "Overwrote index file with new index!");
+		} catch (IOException e) {
+			Log.log(LogLevel.Critical, "Couldn't create or write index file "+indexFile.getAbsolutePath()+" ."
+					+ "Are write permissions missing?");
+			e.printStackTrace();
+			return;
+		}
+	}
+	
 	/**
 	 * Parses a line of indexData into an ArrayList containing the rgb int and the name
 	 * @param indexData
