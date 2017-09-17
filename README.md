@@ -2,8 +2,13 @@
 ## Description
 Create a picture mosaic by using several pictures. To specify the result an Image of your choice must be given and renamed accordingly.
 
+## Requirements
+* Java 1.8
+
+Note: other versions of Java are untested but might work (or not).
+
 ## Installtion
-TBD (you can just compile the java code yourself)
+TBD (Compile src into a runnable .jar works)
 
 ## Setup
 Start **picture-mosaic** once to create the *resources* folder in your current directory. Once setup it should move some pictures into the *resources/Images* folder. Those will later end up creating the mosaic.
