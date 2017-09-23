@@ -11,7 +11,7 @@ Note: other versions of Java are untested but might work (or not).
 TBD (Compile src into a runnable .jar works)
 
 ## Setup
-Start **picture-mosaic** once to create the *resources* folder in your current directory. Once setup it should move some pictures into the *resources/Images* folder. Those will later end up creating the mosaic.
+Start **picture-mosaic** once to create the *resources* folder in your current directory. Once setup you should move some pictures into the *resources/Images* folder. Those will later end up creating the mosaic.
 To specify how the mosaic should look like an Image file needs to be placed in the *resources* folder and named *Target* (note the missing of any file extension).
 
 ## Usage
